@@ -13,18 +13,6 @@ import (
 	"golang.org/x/text/encoding"
 )
 
-type option struct {
-	dbfEncoding string
-}
-
-type optionFunc func(*option)
-
-func WithDbfEncoding(enc string) optionFunc {
-	return func(o *option) {
-		o.dbfEncoding = enc
-	}
-}
-
 // Reader provides a interface for reading Shapefiles. Calls
 // to the Next method will iterate through the objects in the
 // Shapefile. After a call to Next the object will be available
@@ -45,7 +33,6 @@ type Reader struct {
 	dbfNumRecords   int32
 	dbfHeaderLength int16
 	dbfRecordLength int16
-	dbfEncoding     string
 	dbfDecoder      *encoding.Decoder
 }
 
@@ -56,7 +43,7 @@ type readSeekCloser interface {
 }
 
 // Open opens a Shapefile for reading.
-func Open(filename string, options ...optionFunc) (*Reader, error) {
+func Open(filename string, options ...OptionFunc) (*Reader, error) {
 	ext := filepath.Ext(filename)
 	if strings.ToLower(ext) != ".shp" {
 		return nil, fmt.Errorf("Invalid file extension: %s", filename)
@@ -287,6 +274,8 @@ func (r *Reader) ReadAttribute(row int, field int) Attribute {
 	case NumericType:
 		attr, _ := decodeNumeric(buf, name)
 		return attr
+	default:
+		attr, _ := decodeRaw(buf, name)
+		return attr
 	}
-	return nil
 }

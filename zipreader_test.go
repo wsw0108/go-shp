@@ -153,7 +153,7 @@ func TestZipReaderAttribute(t *testing.T) {
 		for i := range fsl {
 			la := lr.Attribute(i)
 			za := zr.Attribute(i)
-			if la != za {
+			if la.Value() != za.Value() {
 				t.Fatalf("Shape %d: Attribute %d (%s) are unequal: '%s' vs '%s'",
 					ln+1, i, fsl[i].String(), la, za)
 			}
@@ -201,7 +201,7 @@ func skipOrDownloadNaturalEarth(t *testing.T, p string) {
 
 func TestNaturalEarthZip(t *testing.T) {
 	type metaShape struct {
-		Attributes map[string]string
+		Attributes map[string]Attribute
 		Shape
 	}
 	p := "ne_110m_admin_0_countries.zip"
@@ -213,13 +213,13 @@ func TestNaturalEarthZip(t *testing.T) {
 	defer zr.Close()
 
 	fs := zr.Fields()
-	if len(fs) != 63 {
+	if len(fs) != 94 {
 		t.Fatalf("Expected 63 columns in Natural Earth dataset, got %d", len(fs))
 	}
 	var metas []metaShape
 	for zr.Next() {
 		m := metaShape{
-			Attributes: make(map[string]string),
+			Attributes: make(map[string]Attribute),
 		}
 		_, m.Shape = zr.Shape()
 		for n := range fs {

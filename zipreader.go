@@ -27,7 +27,7 @@ func openFromZIP(z *zip.ReadCloser, name string) (io.ReadCloser, error) {
 }
 
 // OpenZip opens a ZIP file that contains a single shapefile.
-func OpenZip(zipFilePath string) (*ZipReader, error) {
+func OpenZip(zipFilePath string, options ...OptionFunc) (*ZipReader, error) {
 	z, err := zip.OpenReader(zipFilePath)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func OpenZip(zipFilePath string) (*ZipReader, error) {
 	withoutExt := strings.TrimSuffix(shapeFiles[0].Name, ".shp")
 	// dbf is optional, so no error checking here
 	dbf, _ := openFromZIP(zr.z, withoutExt+".dbf")
-	zr.sr = SequentialReaderFromExt(shp, dbf)
+	zr.sr = SequentialReaderFromExt(shp, dbf, options...)
 	return zr, nil
 }
 
@@ -85,7 +85,7 @@ func shapesInZip(z *zip.ReadCloser) []*zip.File {
 // drive letter (e.g. C:) or leading slash, and only forward slashes are
 // allowed. These rules are the same as in
 // https://golang.org/pkg/archive/zip/#FileHeader.
-func OpenShapeFromZip(zipFilePath string, name string) (*ZipReader, error) {
+func OpenShapeFromZip(zipFilePath string, name string, options ...OptionFunc) (*ZipReader, error) {
 	z, err := zip.OpenReader(zipFilePath)
 	if err != nil {
 		return nil, err
@@ -101,7 +101,7 @@ func OpenShapeFromZip(zipFilePath string, name string) (*ZipReader, error) {
 	// dbf is optional, so no error checking here
 	prefix := strings.TrimSuffix(name, path.Ext(name))
 	dbf, _ := openFromZIP(zr.z, prefix+".dbf")
-	zr.sr = SequentialReaderFromExt(shp, dbf)
+	zr.sr = SequentialReaderFromExt(shp, dbf, options...)
 	return zr, nil
 }
 
@@ -135,7 +135,7 @@ func (zr *ZipReader) Shape() (int, Shape) {
 
 // Attribute returns the n-th field of the last row that was read. If there
 // were any errors before, the empty string is returned.
-func (zr *ZipReader) Attribute(n int) string {
+func (zr *ZipReader) Attribute(n int) Attribute {
 	return zr.sr.Attribute(n)
 }
 

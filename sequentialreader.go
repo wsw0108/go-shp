@@ -6,7 +6,10 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
-	"strings"
+
+	"golang.org/x/net/html/charset"
+
+	"golang.org/x/text/encoding"
 )
 
 // SequentialReader is the interface that allows reading shapes and attributes one after another. It also embeds io.Closer.
@@ -26,7 +29,7 @@ type SequentialReader interface {
 	// Attribute returns the value of the n-th attribute in the current row. If
 	// the SequentialReader encountered any errors, the empty string is
 	// returned.
-	Attribute(n int) string
+	Attribute(n int) Attribute
 
 	// Fields returns the fields of the database. If the SequentialReader
 	// encountered any errors, nil is returned.
@@ -37,11 +40,11 @@ type SequentialReader interface {
 }
 
 // Attributes returns all attributes of the shape that sr was last advanced to.
-func Attributes(sr SequentialReader) []string {
+func Attributes(sr SequentialReader) []Attribute {
 	if sr.Err() != nil {
 		return nil
 	}
-	s := make([]string, len(sr.Fields()))
+	s := make([]Attribute, len(sr.Fields()))
 	for i := range s {
 		s[i] = sr.Attribute(i)
 	}
@@ -70,6 +73,7 @@ type seqReader struct {
 	dbfNumRecords   int32
 	dbfHeaderLength int16
 	dbfRecordLength int16
+	dbfDecoder      *encoding.Decoder
 	dbfRow          []byte
 }
 
@@ -189,17 +193,35 @@ func (sr *seqReader) Shape() (int, Shape) {
 }
 
 // Attribute implements a method of interface SequentialReader for seqReader.
-func (sr *seqReader) Attribute(n int) string {
+func (sr *seqReader) Attribute(n int) Attribute {
 	if sr.err != nil {
-		return ""
+		return nil
 	}
 	start := 1
 	f := 0
 	for ; f < n; f++ {
 		start += int(sr.dbfFields[f].Size)
 	}
-	s := string(sr.dbfRow[start : start+int(sr.dbfFields[f].Size)])
-	return strings.Trim(s, " ")
+	field := sr.dbfFields[f]
+	buf := sr.dbfRow[start : start+int(field.Size)]
+	name := string(field.Name[:])
+	switch field.Fieldtype {
+	case CharacterType:
+		attr, _ := decodeCharacter(buf, name, sr.dbfDecoder)
+		return attr
+	case DateType:
+		attr, _ := decodeDate(buf, name)
+		return attr
+	case FloatingPointType:
+		attr, _ := decodeNumeric(buf, name)
+		return attr
+	case NumericType:
+		attr, _ := decodeNumeric(buf, name)
+		return attr
+	default:
+		attr, _ := decodeRaw(buf, name)
+		return attr
+	}
 }
 
 // Err returns the first non-EOF error that was encountered.
@@ -228,8 +250,18 @@ func (sr *seqReader) Fields() []Field {
 
 // SequentialReaderFromExt returns a new SequentialReader that interprets shp
 // as a source of shapes whose attributes can be retrieved from dbf.
-func SequentialReaderFromExt(shp, dbf io.ReadCloser) SequentialReader {
+func SequentialReaderFromExt(shp, dbf io.ReadCloser, options ...OptionFunc) SequentialReader {
+	opt := &option{}
+	for _, fn := range options {
+		fn(opt)
+	}
+	enc, _ := charset.Lookup(opt.dbfEncoding)
+	if enc == nil {
+		enc = encoding.Nop
+	}
+	dbfDecoder := enc.NewDecoder()
 	sr := &seqReader{shp: shp, dbf: dbf}
+	sr.dbfDecoder = dbfDecoder
 	sr.readHeaders()
 	return sr
 }
