@@ -8,7 +8,22 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/net/html/charset"
+	"golang.org/x/text/encoding"
 )
+
+type option struct {
+	dbfEncoding string
+}
+
+type optionFunc func(*option)
+
+func WithDbfEncoding(enc string) optionFunc {
+	return func(o *option) {
+		o.dbfEncoding = enc
+	}
+}
 
 // Reader provides a interface for reading Shapefiles. Calls
 // to the Next method will iterate through the objects in the
@@ -30,6 +45,8 @@ type Reader struct {
 	dbfNumRecords   int32
 	dbfHeaderLength int16
 	dbfRecordLength int16
+	dbfEncoding     string
+	dbfDecoder      *encoding.Decoder
 }
 
 type readSeekCloser interface {
@@ -39,16 +56,26 @@ type readSeekCloser interface {
 }
 
 // Open opens a Shapefile for reading.
-func Open(filename string) (*Reader, error) {
+func Open(filename string, options ...optionFunc) (*Reader, error) {
 	ext := filepath.Ext(filename)
 	if strings.ToLower(ext) != ".shp" {
 		return nil, fmt.Errorf("Invalid file extension: %s", filename)
 	}
+	opt := &option{}
+	for _, fn := range options {
+		fn(opt)
+	}
+	enc, _ := charset.Lookup(opt.dbfEncoding)
+	if enc == nil {
+		enc = encoding.Nop
+	}
+	dbfDecoder := enc.NewDecoder()
 	shp, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	s := &Reader{filename: strings.TrimSuffix(filename, ext), shp: shp}
+	s.dbfDecoder = dbfDecoder
 	return s, s.readHeaders()
 }
 
@@ -105,7 +132,7 @@ func (r *Reader) Shape() (int, Shape) {
 
 // Attribute returns value of the n-th attribute of the most recent feature
 // that was read by a call to Next.
-func (r *Reader) Attribute(n int) string {
+func (r *Reader) Attribute(n int) Attribute {
 	return r.ReadAttribute(int(r.num)-1, n)
 }
 
@@ -236,14 +263,30 @@ func (r *Reader) AttributeCount() int {
 
 // ReadAttribute returns the attribute value at row for field in
 // the DBF table as a string. Both values starts at 0.
-func (r *Reader) ReadAttribute(row int, field int) string {
+func (r *Reader) ReadAttribute(row int, field int) Attribute {
 	r.openDbf() // make sure we have a dbf file to read from
 	seekTo := 1 + int64(r.dbfHeaderLength) + (int64(row) * int64(r.dbfRecordLength))
 	for n := 0; n < field; n++ {
 		seekTo += int64(r.dbfFields[n].Size)
 	}
 	r.dbf.Seek(seekTo, io.SeekStart)
-	buf := make([]byte, r.dbfFields[field].Size)
+	f := r.dbfFields[field]
+	name := string(f.Name[:])
+	buf := make([]byte, f.Size)
 	r.dbf.Read(buf)
-	return strings.Trim(string(buf[:]), " ")
+	switch f.Fieldtype {
+	case CharacterType:
+		attr, _ := decodeCharacter(buf, name, r.dbfDecoder)
+		return attr
+	case DateType:
+		attr, _ := decodeDate(buf, name)
+		return attr
+	case FloatingPointType:
+		attr, _ := decodeNumeric(buf, name)
+		return attr
+	case NumericType:
+		attr, _ := decodeNumeric(buf, name)
+		return attr
+	}
+	return nil
 }

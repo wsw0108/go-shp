@@ -561,10 +561,20 @@ func (p *MultiPatch) write(file io.Writer) {
 	binary.Write(file, binary.LittleEndian, p.MArray)
 }
 
+// FieldType is the type of field
+type FieldType byte
+
+const (
+	CharacterType     FieldType = 'C'
+	DateType          FieldType = 'D'
+	FloatingPointType FieldType = 'F'
+	NumericType       FieldType = 'N'
+)
+
 // Field representation of a field object in the DBF file
 type Field struct {
 	Name      [11]byte
-	Fieldtype byte
+	Fieldtype FieldType
 	Addr      [4]byte // not used
 	Size      uint8
 	Precision uint8
@@ -581,7 +591,7 @@ func (f Field) String() string {
 // DBF file.
 func StringField(name string, length uint8) Field {
 	// TODO: Error checking
-	field := Field{Fieldtype: 'C', Size: length}
+	field := Field{Fieldtype: CharacterType, Size: length}
 	copy(field.Name[:], []byte(name))
 	return field
 }
@@ -589,7 +599,7 @@ func StringField(name string, length uint8) Field {
 // NumberField returns a Field that can be used in SetFields to initialize the
 // DBF file.
 func NumberField(name string, length uint8) Field {
-	field := Field{Fieldtype: 'N', Size: length}
+	field := Field{Fieldtype: NumericType, Size: length}
 	copy(field.Name[:], []byte(name))
 	return field
 }
@@ -597,7 +607,7 @@ func NumberField(name string, length uint8) Field {
 // FloatField returns a Field that can be used in SetFields to initialize the
 // DBF file. Used to store floating points with precision in the DBF.
 func FloatField(name string, length uint8, precision uint8) Field {
-	field := Field{Fieldtype: 'F', Size: length, Precision: precision}
+	field := Field{Fieldtype: FloatingPointType, Size: length, Precision: precision}
 	copy(field.Name[:], []byte(name))
 	return field
 }
@@ -606,7 +616,7 @@ func FloatField(name string, length uint8, precision uint8) Field {
 // DBF file. Used to store Date strings formatted as YYYYMMDD. Data wise this
 // is the same as a StringField with length 8.
 func DateField(name string) Field {
-	field := Field{Fieldtype: 'D', Size: 8}
+	field := Field{Fieldtype: DateType, Size: 8}
 	copy(field.Name[:], []byte(name))
 	return field
 }
