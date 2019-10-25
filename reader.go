@@ -249,7 +249,7 @@ func (r *Reader) AttributeCount() int {
 }
 
 // ReadAttribute returns the attribute value at row for field in
-// the DBF table as a string. Both values starts at 0.
+// the DBF table. Both values starts at 0.
 func (r *Reader) ReadAttribute(row int, field int) Attribute {
 	r.openDbf() // make sure we have a dbf file to read from
 	seekTo := 1 + int64(r.dbfHeaderLength) + (int64(row) * int64(r.dbfRecordLength))
@@ -258,24 +258,39 @@ func (r *Reader) ReadAttribute(row int, field int) Attribute {
 	}
 	r.dbf.Seek(seekTo, io.SeekStart)
 	f := r.dbfFields[field]
-	name := string(f.Name[:])
 	buf := make([]byte, f.Size)
 	r.dbf.Read(buf)
+	name := strings.TrimRight(string(f.Name[:]), "\x00")
 	switch f.Fieldtype {
 	case CharacterType:
 		attr, _ := decodeCharacter(buf, name, r.dbfDecoder)
+		if attr == nil {
+			return nil
+		}
 		return attr
 	case DateType:
 		attr, _ := decodeDate(buf, name)
+		if attr == nil {
+			return nil
+		}
 		return attr
 	case FloatingPointType:
 		attr, _ := decodeNumeric(buf, name)
+		if attr == nil {
+			return nil
+		}
 		return attr
 	case NumericType:
 		attr, _ := decodeNumeric(buf, name)
+		if attr == nil {
+			return nil
+		}
 		return attr
 	default:
 		attr, _ := decodeRaw(buf, name)
+		if attr == nil {
+			return nil
+		}
 		return attr
 	}
 }
